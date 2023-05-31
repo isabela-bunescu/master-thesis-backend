@@ -1,7 +1,7 @@
 from flask import Flask, jsonify
 from flask_cors import CORS
 import pandas
-from CountryData import parse_population_data_2 
+ 
 import pymongo 
 app = Flask(__name__)
 CORS(app)
