@@ -24,7 +24,12 @@ def get_index():
         lst.append({'name' : document['name'], 'display_name' : document['display_name'], 'description' : document['description']})
     return jsonify(lst)
 
+@app.route('/data/delete/<name>', methods=['DELETE'])
+def delete_entry(name):
+    index_collection.delete_many({'name': name})
+    data_collection.delete_many({'name': name})
 
+    return "", 204
     
 if __name__ == '__main__':
-    app.run()
+    app.run(host='0.0.0.0', port=5000)
