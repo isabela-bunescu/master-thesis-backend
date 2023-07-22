@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 import pandas
  
@@ -23,6 +23,23 @@ def get_index():
     for document in index_collection.find():
         lst.append({'name' : document['name'], 'display_name' : document['display_name'], 'description' : document['description']})
     return jsonify(lst)
+
+@app.route('/data/index', methods=['PUT'])
+def update_index():
+    try:
+        name = request.json['name']
+        display_name = request.json['display_name']
+        description = request.json['description']
+    except:
+        return jsonify({"success": False})
+    
+    if index_collection.count_documents({'name' : name}, limit = 1) > 0:
+        #update
+        index_collection.update_one({'name' : name}, {"$set": {'name' : name, 'display_name' : display_name, 'description' : description}})
+        return jsonify({"success": True})
+    else:
+        return jsonify({"success": False})
+
 
 @app.route('/data/delete/<name>', methods=['DELETE'])
 def delete_entry(name):
