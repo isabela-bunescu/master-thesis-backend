@@ -2,6 +2,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 import pandas
 import datetime 
+import json 
 
 import pymongo 
 app = Flask(__name__)
@@ -13,7 +14,21 @@ index_collection = db["TreeDataIndex"]
 data_collection = db['TreeData']
 users_collection = db['Users']
 
-@app.route('/data/json/<name>', methods=['GET', 'POST'])
+def is_valid_data_id(s):
+    if s == '':
+        return False
+    
+    if not (s[0].isalnum() and s[-1].isalnum()):
+        return False
+    
+    for char in s:
+        if not (char.isalnum() or (char  in ['-', '_'])):
+            return False
+    
+    return True
+
+
+@app.route('/data/json/<name>', methods=['GET'])
 def generate_json(name):
 
     c = data_collection.find_one( { 'name': name } )
@@ -48,7 +63,40 @@ def update_index():
     else:
         return jsonify({"success": False})
     
+@app.route('/data/index', methods=['POST'])
+def add_index():
+    try:
+        name = str(request.json['name'])
+        display_name = request.json['display_name']
+        description = request.json['description']
+        if len(display_name) == 0:
+            return jsonify({"success": False, "message": "Display name should contain at least one character"})
+        if not is_valid_data_id(name):
+            return jsonify({"success": False, "message": " Must contain only chars 0-9, a-z, A-z, '_', '-'"})
+    except:
+        return jsonify({"success": False, "message": " Something went wrong"})
+    
+    if index_collection.count_documents({'name' : name}, limit = 1) > 0:
+        #update
+        return jsonify({"success": False, "message": " Already exists"})
+    else:
+        index_collection.insert_one({'name' : name, 'display_name' : display_name, 'description' : description})
+        data_collection.insert_one({'name': name, 'data': []})
+        return jsonify({"success": True, "message": "Index added"})
+        
+    
+@app.route('/data/json/<name>', methods=['PUT'])
+def update_json(name):
+    
+    data = json.loads(request.json['data'])
+    
+    if data_collection.count_documents({'name' : name}, limit = 1) == 1:
+        data_collection.update_one({'name' : name}, {"$set": {'name' : name, 'data' : data}})
+        return jsonify({"success": True})
 
+    return jsonify({"success": False})
+    #c = data_collection.find_one( { 'name': name } )
+    #return jsonify(c['data'])
 
 
 @app.route('/data/delete/<name>', methods=['DELETE'])
@@ -93,7 +141,7 @@ def add_user():
     
     if users_collection.count_documents({'key' : key}, limit = 1) > 0:
         #update
-        users_collection.update_one({'name' : name}, {"$set": {'key' : key, 'name' : name, 'root' : root, 'edit': edit, 'date_created': str(datetime.datetime.now), 'last_accessed': 'never' }})
+        users_collection.update_one({'key' : key}, {"$set": {'key' : key, 'name' : name, 'root' : root, 'edit': edit, 'date_created': str(datetime.datetime.now), 'last_accessed': 'never' }})
         return jsonify({"success": True, "message": "User updated"})
     else:
         users_collection.insert_one({'key' : key, 'name' : name, 'root' : root, 'edit': edit,
