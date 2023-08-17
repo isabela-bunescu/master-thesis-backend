@@ -88,7 +88,7 @@ def add_index():
 @app.route('/data/json/<name>', methods=['PUT'])
 def update_json(name):
     
-    data = json.loads(request.json['data'])
+    data = json.loads(str(request.json['data']))
     
     if data_collection.count_documents({'name' : name}, limit = 1) == 1:
         data_collection.update_one({'name' : name}, {"$set": {'name' : name, 'data' : data}})
