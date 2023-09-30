@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, session
 from flask_cors import CORS
 import pandas
 import datetime 
@@ -6,6 +6,8 @@ import json
 
 import pymongo 
 app = Flask(__name__)
+app.secret_key = 'super secret key'
+app.config['SESSION_TYPE'] = 'filesystem'
 CORS(app)
 
 client = pymongo.MongoClient('localhost', 27017)
@@ -106,47 +108,107 @@ def delete_entry(name):
 
     return "", 204
     
+## Users 
+
 @app.route('/users/delete/<key>', methods=['DELETE'])
 def delete_user(key):
-    print(key, users_collection.count_documents({'key' : key}, limit = 1))
-    if users_collection.count_documents({'key' : key}, limit = 1) > 0:
-        users_collection.delete_many({'key': key})
-        return 'Done', 204
+    if 'log_in' in session and session['log_in'] and session['root']:
+        print(key, users_collection.count_documents({'key' : key}, limit = 1))
+        if users_collection.count_documents({'key' : key}, limit = 1) > 0:
+            users_collection.delete_many({'key': key})
+            return 'Done', 204
+        else:
+            return 'Not found', 404
     else:
-        return 'Not found', 404
+        if 'log_in' in session and session['log_in'] and not session['root']:
+            return "Don't have permission", 400
+        else:
+            return "Login required", 400
 
 @app.route('/users/list', methods=['GET'])
 def get_users():
     lst = []
-    for document in users_collection.find():
-        lst.append({'key': document['key'],  'name': document['name'],  'root': document['root'],  'edit': document['edit'],
-                       'creation_date': document['creation_date'],  'last_access': document['last_access']})
-    return jsonify(lst)
+    if 'log_in' in session and session['log_in'] and session['root']:
+        for document in users_collection.find():
+            lst.append({'key': document['key'],  'name': document['name'],  'root': document['root'],  'edit': document['edit'],
+                        'creation_date': document['creation_date'],  'last_access': document['last_access']})
+        return jsonify(lst)
+    else:
+        if 'log_in' in session and session['log_in'] and not session['root']:
+            return "Don't have permission", 400
+        else:
+            return "Login required", 400
 
 @app.route('/users/add', methods=['PUT'])
 def add_user():
+    if 'log_in' in session and session['log_in'] and session['root']:
+        try:
+            key = str(request.json['key'])
+            name = str(request.json['name'])
+            root = bool(request.json['root'])
+            edit = bool(request.json['edit'])
+            if len(key) < 6 or not key.isalnum():
+                return jsonify({"success": False, "message": "key must contain at least 6 characters (a-z, A-Z, 0-9)"})
+            if len(name) < 3 :
+                return jsonify({"success": False, "message": "name 3 characters"})
+            if root:
+                edit = True
+        except:
+            return jsonify({"success": False, "message": "Invalid form data"})
+        
+        if users_collection.count_documents({'key' : key}, limit = 1) > 0:
+            #update
+            users_collection.update_one({'key' : key}, {"$set": {'key' : key, 'name' : name, 'root' : root, 'edit': edit, 'date_created': str(datetime.datetime.now), 'last_accessed': 'never' }})
+            return jsonify({"success": True, "message": "User updated"})
+        else:
+            users_collection.insert_one({'key' : key, 'name' : name, 'root' : root, 'edit': edit,
+                        'creation_date': str(datetime.datetime.now()),  'last_access': 'never'})
+            return jsonify({"success": True, "message": "User created"})
+    else:
+        if 'log_in' in session and session['log_in'] and not session['root']:
+            return "Don't have permission", 400
+        else:
+            return "Login required", 400
+
+@app.route('/users/login', methods=['POST'])
+def login():
     try:
         key = str(request.json['key'])
-        name = str(request.json['name'])
-        root = bool(request.json['root'])
-        edit = bool(request.json['edit'])
-        if len(key) < 6 or not key.isalnum():
-            return jsonify({"success": False, "message": "key must contain at least 6 characters (a-z, A-Z, 0-9)"})
-        if len(name) < 3 :
-            return jsonify({"success": False, "message": "name 3 characters"})
-        if root:
-            edit = True
-    except:
-        return jsonify({"success": False, "message": "Invalid form data"})
     
+        if 'log_in' in session and session['log_in']:
+            session['log_in'] = False
+        if users_collection.count_documents({'key' : key}, limit = 1) > 0:
+            session['log_in'] = True
+            document = next(users_collection.find({'key' : key}))
+            try:
+                session['root'] = document['root']
+                session['edit'] = document['edit']
+                session['name'] = document['name']
+                session['log_in'] = True
+                return jsonify({"success": True, "message": "",  "root": document['root'], "edit": document['edit']})
+            except:
+                return jsonify({"success": False, "message": "Error occured", "root": False, "edit": False})
+        else:
+            return jsonify({"success": False, "message": "Invalid key", "root": False, "edit": False})
+    except:
+        return "Format error", 400
+
+@app.route('/users/check_login', methods=['GET'])
+def check_login():
     if users_collection.count_documents({'key' : key}, limit = 1) > 0:
-        #update
-        users_collection.update_one({'key' : key}, {"$set": {'key' : key, 'name' : name, 'root' : root, 'edit': edit, 'date_created': str(datetime.datetime.now), 'last_accessed': 'never' }})
-        return jsonify({"success": True, "message": "User updated"})
+        return jsonify({"success": True, "message": ""})
     else:
-        users_collection.insert_one({'key' : key, 'name' : name, 'root' : root, 'edit': edit,
-                       'creation_date': str(datetime.datetime.now()),  'last_access': 'never'})
-        return jsonify({"success": True, "message": "User created"})
+        return jsonify({"success": False, "message": "No user login"})
+
+@app.route('/users/logout', methods=['GET'])
+def logout():
+    if 'log_in' in session and session['log_in'] == True:
+        session['log_in'] = False
+        print('LOGOUT')
+        return "", 204
+    else:
+        return "", 404
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+
+    app.run(debug=True, host='0.0.0.0', port=5000)
