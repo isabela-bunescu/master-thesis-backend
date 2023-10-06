@@ -99,7 +99,12 @@ def get_index():
 
 @app.route('/data/index', methods=['PUT'])
 def update_index():
+    """
+    Update an existing index entry in the database.
 
+    Returns:
+        json: A JSON response indicating the success of the operation.
+    """
     if 'log_in' in session and session['log_in'] and session['edit']:
         try:
             name = request.json['name']
@@ -107,42 +112,51 @@ def update_index():
             description = request.json['description']
         except:
             return jsonify({"success": False})
-        
-        if index_collection.count_documents({'name' : name}, limit = 1) > 0:
-            #update
-            index_collection.update_one({'name' : name}, {"$set": {'name' : name, 'display_name' : display_name, 'description' : description}})
+
+        if index_collection.count_documents({'name' : name}, limit=1) > 0:
+            # Update the existing index entry
+            index_collection.update_one(
+                {'name': name},
+                {"$set": {'name': name, 'display_name': display_name, 'description': description}}
+            )
             return jsonify({"success": True})
         else:
             return jsonify({"success": False})
     else:
-        return "Either not authentificated or the the user has no edit rights", 401
+        return "Either not authenticated or the user has no edit rights", 401
     
 @app.route('/data/index', methods=['POST'])
 def add_index():
-    
-    
+    """
+    Add an index entry to the database.
+
+    Returns:
+        json: Success message if the index entry is added successfully, error message otherwise.
+    """
+
     if 'log_in' in session and session['log_in'] and session['edit']:
         try:
             name = str(request.json['name'])
             display_name = request.json['display_name']
             description = request.json['description']
+
             if len(display_name) == 0:
                 return jsonify({"success": False, "message": "Display name should contain at least one character"})
+
             if not is_valid_data_id(name):
-                return jsonify({"success": False, "message": " Must contain only chars 0-9, a-z, A-z, '_', '-'"})
+                return jsonify({"success": False, "message": "Must contain only characters 0-9, a-z, A-Z, '_', '-'"})
         except:
-            return jsonify({"success": False, "message": " Something went wrong"})
-        
-        if index_collection.count_documents({'name' : name}, limit = 1) > 0:
-            #update
-            return jsonify({"success": False, "message": " Already exists"})
+            return jsonify({"success": False, "message": "Something went wrong"})
+
+        if index_collection.count_documents({'name': name}, limit=1) > 0:
+            return jsonify({"success": False, "message": "Index already exists"})
         else:
-            index_collection.insert_one({'name' : name, 'display_name' : display_name, 'description' : description})
+            index_collection.insert_one({'name': name, 'display_name': display_name, 'description': description})
             data_collection.insert_one({'name': name, 'data': []})
             return jsonify({"success": True, "message": "Index added"})
-        
+
     else:
-        return "Either not authentificated or the the user has no edit rights", 401
+        return "Either not authenticated or the user has no edit rights", 401
     
 @app.route('/data/json/<name>', methods=['PUT'])
 def update_json(name):
@@ -241,53 +255,104 @@ def delete_user(key):
         else:
             # Return 'Login required' if not logged in
             return "Login required", 400
+        
+        
 @app.route('/users/list', methods=['GET'])
 def get_users():
+    """
+    Get the list of users from the database.
+
+    Returns:
+        json: The JSON response containing the list of users.
+
+    Raises:
+        HTTPException: If there is an error or the user does not have the required permissions.
+    """
+
     lst = []
+
     if 'log_in' in session and session['log_in'] and session['root']:
         for document in users_collection.find():
-            lst.append({'key': document['key'],  'name': document['name'],  'root': document['root'],  'edit': document['edit'],
-                        'creation_date': document['creation_date'],  'last_access': document['last_access']})
+            lst.append({
+                'key': document['key'],
+                'name': document['name'],
+                'root': document['root'],
+                'edit': document['edit'],
+                'creation_date': document['creation_date'],
+                'last_access': document['last_access']
+            })
+
         return jsonify(lst)
     else:
         if 'log_in' in session and session['log_in'] and not session['root']:
-            return "Don't have permission", 400
+            raise HTTPException("Don't have permission", 400)
         else:
-            return "Login required", 400
+            raise HTTPException("Login required", 400)
 
-@app.route('/users/add', methods=['PUT'])
 def add_user():
+    """
+    Adds or updates user information in the system.
+
+    Returns:
+        A JSON response containing success status and a message.
+
+    Raises:
+        400 Bad Request: If there is an error or insufficient permissions.
+
+    """
+
     if 'log_in' in session and session['log_in'] and session['root']:
+        # Check if the user is logged in and has root access
         try:
             key = str(request.json['key'])
             name = str(request.json['name'])
             root = bool(request.json['root'])
             edit = bool(request.json['edit'])
+
+            # Validate the key and name inputs
             if len(key) < 6 or not key.isalnum():
                 return jsonify({"success": False, "message": "key must contain at least 6 characters (a-z, A-Z, 0-9)"})
-            if len(name) < 3 :
-                return jsonify({"success": False, "message": "name 3 characters"})
+            if len(name) < 3:
+                return jsonify({"success": False, "message": "name must be at least 3 characters long"})
+
+            # Set edit to True if root is True
             if root:
                 edit = True
+
         except:
             return jsonify({"success": False, "message": "Invalid form data"})
-        
-        if users_collection.count_documents({'key' : key}, limit = 1) > 0:
-            #update
-            users_collection.update_one({'key' : key}, {"$set": {'key' : key, 'name' : name, 'root' : root, 'edit': edit, 'date_created': str(datetime.datetime.now), 'last_accessed': 'never' }})
+
+        if users_collection.count_documents({'key': key}, limit=1) > 0:
+            # Update existing user
+            users_collection.update_one({'key': key}, {"$set": {'key': key, 'name': name, 'root': root, 'edit': edit,
+                                                                 'date_created': str(datetime.datetime.now()),
+                                                                 'last_accessed': 'never'}})
             return jsonify({"success": True, "message": "User updated"})
         else:
-            users_collection.insert_one({'key' : key, 'name' : name, 'root' : root, 'edit': edit,
-                        'creation_date': str(datetime.datetime.now()),  'last_access': 'never'})
+            # Insert new user
+            users_collection.insert_one({'key': key, 'name': name, 'root': root, 'edit': edit,
+                                         'creation_date': str(datetime.datetime.now()), 'last_access': 'never'})
             return jsonify({"success": True, "message": "User created"})
     else:
         if 'log_in' in session and session['log_in'] and not session['root']:
+            # User does not have permission to perform the operation
             return "Don't have permission", 400
         else:
+            # User needs to log in
             return "Login required", 400
 
 @app.route('/users/login', methods=['POST'])
 def login():
+    """
+    Handle user login request.
+
+    This function handles the POST request to the '/users/login' endpoint and performs user authentication
+    based on the provided 'key' in the JSON payload. It sets session variables based on the retrieved user 
+    document from a MongoDB collection.
+
+    Returns:
+        A JSON response indicating the success status.
+    """
     print('mongodb://%s:%s@%s:%s/'%(user_db, pass_db, host_db, port_db) if len(user_db)>0 else 'mongodb://%s:%s/'%(host_db, port_db))
 
     try:
@@ -311,6 +376,7 @@ def login():
             return jsonify({"success": False, "message": "Invalid key", "root": False, "edit": False})
     except:
         return "Format error", 400
+
 
 @app.route('/users/check_login', methods=['GET'])
 def check_login():
