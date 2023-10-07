@@ -288,8 +288,8 @@ def get_users():
             raise HTTPException("Don't have permission", 400)
         else:
             raise HTTPException("Login required", 400)
-            
-@app.route('/users/add', methods=['POST'])
+
+@app.route('/users/add', methods=['PUT'])
 def add_user():
     """
     Adds or updates user information in the system.
