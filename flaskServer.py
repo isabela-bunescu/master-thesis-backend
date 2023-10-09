@@ -370,6 +370,7 @@ def login():
                 session['name'] = document['name']
                 session['key'] = document['key']
                 session['log_in'] = True
+                users_collection.update_one({'key': key}, {"$set": {'last_accessed': str(datetime.datetime.now())}})
                 return jsonify({"success": True, "message": "",  "root": document['root'], "edit": document['edit'], "name": document['name']})
             except:
                 return jsonify({"success": False, "message": "Error occured", "root": False, "edit": False})
